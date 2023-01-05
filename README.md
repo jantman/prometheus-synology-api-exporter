@@ -1,6 +1,6 @@
 # EXPERIMENTAL/ALPHA/UNSUPPORTED prometheus-synology-api-exporter
 
-[![Project Status: WIP – Initial development is in progress, but there has not yet been a stable, usable release suitable for the public.](https://www.repostatus.org/badges/latest/wip.svg)](https://www.repostatus.org/#wip)
+[![Project Status: WIP – Initial development is in progress, but there has not yet been a stable, usable release suitable for the public.](https://www.repostatus.org/badges/latest/wip.svg)](https://www.repostatus.org/#wip) [![Docker Pulls](https://img.shields.io/docker/pulls/jantman/prometheus-synology-api-exporter)](https://hub.docker.com/repository/docker/jantman/prometheus-synology-api-exporter) [![GitHub last commit](https://img.shields.io/github/last-commit/jantman/prometheus-synology-api-exporter)](https://github.com/jantman/prometheus-synology-api-exporter)
 
 Prometheus exporter for Synology DSM using the API for metrics, via the [synologydsm-api](https://pypi.org/project/synologydsm-api/) Python package ([github](https://github.com/hacf-fr/synologydsm-api)).
 
