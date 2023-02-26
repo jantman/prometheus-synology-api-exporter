@@ -43,3 +43,8 @@ python3 -mvenv venv
 source venv/bin/activate
 pip install synologydsm-api==1.0.2 prometheus-client==0.15.0
 ```
+
+
+### Release Process
+
+Tag the repo. [GitHub Actions](https://github.com/jantman/prometheus-synology-api-exporter/actions) will run a Docker build, push to Docker Hub, and create a release on the repo.
