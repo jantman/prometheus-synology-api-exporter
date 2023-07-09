@@ -663,7 +663,13 @@ class SynologyApiCollector:
                 }
             )
             size.add_metric(labels=labels, value=int(disk['size_total']))
-            remain.add_metric(labels=labels, value=disk['remain_life'])
+            if isinstance(disk['remain_life'], type(-1)):
+                remain.add_metric(labels=labels, value=disk['remain_life'])
+            else:
+                # DSM 7.2
+                remain.add_metric(
+                    labels=labels, value=disk['remain_life']['value']
+                )
             sbdays.add_metric(labels=labels, value=disk['sb_days_left'])
             temp.add_metric(labels=labels, value=disk['temp'])
             unc.add_metric(labels=labels, value=disk['unc'])
