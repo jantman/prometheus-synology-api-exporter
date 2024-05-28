@@ -430,8 +430,8 @@ class SynologyApiCollector:
             vol['space_status_detail'] = ss['detail']
             vol['space_status_attention'] = ss['show_attention']
             vol['space_status_danger'] = ss['show_danger']
-            vol['can_do_disk_replace'] = vol['can_do']['disk_replace']
-            vol['can_do_expand_by_disk'] = vol['can_do']['expand_by_disk']
+            vol['can_do_disk_replace'] = vol['can_do'].get('disk_replace', False)
+            vol['can_do_expand_by_disk'] = vol['can_do'].get('expand_by_disk', False)
             states.add_metric(
                 labels=labels,
                 value={

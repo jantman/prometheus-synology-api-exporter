@@ -41,7 +41,7 @@ Clone the repo, then in your clone:
 ```
 python3 -mvenv venv
 source venv/bin/activate
-pip install synologydsm-api==1.0.2 prometheus-client==0.17.0
+pip install synologydsm-api==1.0.2 prometheus-client==0.20.0
 ```
 
 
