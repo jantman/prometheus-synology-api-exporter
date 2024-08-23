@@ -741,7 +741,7 @@ class SynologyApiCollector:
             )
             fail_severity.add_metric(
                 {'category': item['category']},
-                {'severity': item['failSeverity']}
+                {'severity': item['failSeverity'], 'category': item['category']}
             )
             for _type, count in item['fail'].items():
                 failures.add_metric(
