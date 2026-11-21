@@ -2,7 +2,7 @@
 
 Releases before 0.4.0 are described only in [GitHub Releases](https://github.com/jantman/prometheus-synology-api-exporter/releases).
 
-## 0.5.0 (unreleased)
+## 0.5.0 (2026-11-21)
 
 **Breaking:** the values of seven memory metrics change. Any dashboard, alert or recording rule that compensated for the old values (for example by multiplying by 1024, or with a KiB panel unit or KiB thresholds) must drop that compensation when it upgrades.
 
