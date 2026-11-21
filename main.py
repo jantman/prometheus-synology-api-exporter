@@ -431,6 +431,8 @@ class SynologyApiCollector:
             'Swap memory usage percent',
             value=mem['swap_usage']
         )
+        # DSM's SYNO.Core.System.Utilization API reports these in KiB
+        # (py-synologydsm-api's own accessors multiply them by 1024 too).
         for x in [
             "avail_real", "avail_swap", "buffer", "cached", "memory_size",
             "total_real", "total_swap"
@@ -438,7 +440,7 @@ class SynologyApiCollector:
             yield GaugeMetricFamily(
                 f'synology_utilization_memory_{x}',
                 f'Memory utilization - {x}',
-                value=mem[x], unit='bytes'
+                value=mem[x] * 1024, unit='bytes'
             )
 
     def _do_storage_volumes(self) -> Generator[Metric, None, None]:

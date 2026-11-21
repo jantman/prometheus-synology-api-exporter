@@ -2,6 +2,12 @@
 
 Releases before 0.4.0 are described only in [GitHub Releases](https://github.com/jantman/prometheus-synology-api-exporter/releases).
 
+## 0.5.0 (unreleased)
+
+**Breaking:** the values of seven memory metrics change. Any dashboard, alert or recording rule that compensated for the old values (for example by multiplying by 1024, or with a KiB panel unit or KiB thresholds) must drop that compensation when it upgrades.
+
+* Fix `synology_utilization_memory_{avail_real,avail_swap,buffer,cached,memory_size,total_real,total_swap}_bytes`, which reported DSM's values in KiB under a `_bytes` name. They are now multiplied by 1024 and really are bytes. The metric names, types, HELP text and labels are unchanged.
+
 ## 0.4.0 (2026-11-21)
 
 No change to exported metrics: every metric name, type, unit, HELP string and label set is identical to 0.3.1 (checked against a DS1621+ on DSM 7.4.1).
