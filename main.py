@@ -77,7 +77,7 @@ class LabeledGaugeMetricFamily(Metric):
         value: Optional[float] = None,
         labels: Dict[str, str] = None,
         unit: str = '',
-    ):
+    ) -> None:
         Metric.__init__(self, name, documentation, 'gauge', unit)
         if labels is None:
             labels = {}
@@ -104,7 +104,7 @@ class LabeledStateSetMetricFamily(Metric):
         name: str,
         documentation: str,
         labels: Optional[Dict[str, str]] = None,
-    ):
+    ) -> None:
         Metric.__init__(self, name, documentation, 'stateset')
         if labels is None:
             labels = {}
@@ -159,21 +159,31 @@ class SynologyApiCollector:
             self._ip, self._port, self._username
         )
         # The aiohttp session must be created while the loop is running.
-        session: aiohttp.ClientSession = aiohttp.ClientSession(
+        self._session: aiohttp.ClientSession = aiohttp.ClientSession(
             connector=aiohttp.TCPConnector(ssl=self._verify_ssl)
         )
         dsm: SynologyDSM = SynologyDSM(
-            session, self._ip, self._port, self._username, self._passwd,
+            self._session, self._ip, self._port, self._username, self._passwd,
             use_https=self._use_https, timeout=self._timeout
         )
         await dsm.login()
         return dsm
 
+    def close(self) -> None:
+        """Close the aiohttp session and the event loop, for shutdown."""
+        self._loop.run_until_complete(self._session.close())
+        self._loop.close()
+
     async def _update_all(self) -> None:
         """
         Update every DSM API we read, concurrently. Wait for all of them
-        before raising the first exception, so that no request is left
-        running on the loop between scrapes.
+        before raising, so that no request is left running on the loop
+        between scrapes.
+
+        If any update failed because the DSM session expired, raise that
+        SynologyDSMNotLoggedInException even when another update failed
+        differently and earlier in call order, so that the caller still
+        logs in again. Otherwise raise the first exception.
         """
         results: List[Any] = await asyncio.gather(
             self.dsm.information.update(),
@@ -185,9 +195,14 @@ class SynologyApiCollector:
             self.dsm.security.update(),
             return_exceptions=True
         )
-        for result in results:
-            if isinstance(result, BaseException):
-                raise result
+        errors: List[BaseException] = [
+            r for r in results if isinstance(r, BaseException)
+        ]
+        for err in errors:
+            if isinstance(err, SynologyDSMNotLoggedInException):
+                raise err
+        if errors:
+            raise errors[0]
 
     async def _get_dsm_data(self) -> None:
         """Update all data from the DSM API."""
@@ -912,6 +927,13 @@ if __name__ == "__main__":
     elif args.verbose == 1:
         set_log_info()
     logger.debug('Registering collector...')
-    REGISTRY.register(SynologyApiCollector())
+    collector: SynologyApiCollector = SynologyApiCollector()
+    REGISTRY.register(collector)
     logger.info('Starting HTTP server on port %d', args.port)
-    serve_exporter(args.port)
+    try:
+        serve_exporter(args.port)
+    except KeyboardInterrupt:
+        # docker stop sends SIGINT (see STOPSIGNAL in the Dockerfile).
+        logger.info('Interrupted; shutting down')
+    finally:
+        collector.close()

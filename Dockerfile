@@ -5,4 +5,8 @@ RUN pip install --no-cache-dir py-synologydsm-api==2.12.0 prometheus-client==0.2
 
 EXPOSE 8080
 
+# Python as PID 1 has no default SIGTERM handler, so docker stop would wait
+# out its timeout and SIGKILL. SIGINT raises KeyboardInterrupt instead.
+STOPSIGNAL SIGINT
+
 ENTRYPOINT ["/main.py"]
