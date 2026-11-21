@@ -10,18 +10,18 @@ jobs:
       contents: write
       packages: write
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v7
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v2
+        uses: docker/setup-buildx-action@v4
       - name: Login to Docker Hub
-        uses: docker/login-action@v2
+        uses: docker/login-action@v4
         with:
           username: jantman
           password: ${{ secrets.DOCKERHUB_TOKEN }}
       - name: Login to GHCR
         run: echo "${{secrets.GITHUB_TOKEN}}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
       - name: Docker Build and Push
-        uses: docker/build-push-action@v4
+        uses: docker/build-push-action@v7
         with:
           push: true
           sbom: true
@@ -36,13 +36,6 @@ jobs:
             ghcr.io/${{ github.repository }}:${{ github.ref_name }}
             ghcr.io/${{ github.repository }}:latest
       - name: Create Release
-        id: create_release
-        uses: actions/create-release@v1
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} # This token is provided by Actions, you do not need to create your own token
-        with:
-          tag_name: ${{ github.ref }}
-          release_name: Release ${{ github.ref }}
-          body: Release ${{ github.ref_name }}
-          draft: false
-          prerelease: false
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release create "${{ github.ref_name }}" --repo "${{ github.repository }}" --title "Release ${{ github.ref_name }}" --notes "Release ${{ github.ref_name }}"
