@@ -2,7 +2,7 @@
 
 [![Project Status: WIP – Initial development is in progress, but there has not yet been a stable, usable release suitable for the public.](https://www.repostatus.org/badges/latest/wip.svg)](https://www.repostatus.org/#wip) [![Docker Pulls](https://img.shields.io/docker/pulls/jantman/prometheus-synology-api-exporter)](https://hub.docker.com/repository/docker/jantman/prometheus-synology-api-exporter) [![GitHub last commit](https://img.shields.io/github/last-commit/jantman/prometheus-synology-api-exporter)](https://github.com/jantman/prometheus-synology-api-exporter)
 
-Prometheus exporter for Synology DSM using the API for metrics, via the [synologydsm-api](https://pypi.org/project/synologydsm-api/) Python package ([github](https://github.com/hacf-fr/synologydsm-api)).
+Prometheus exporter for Synology DSM using the API for metrics, via the [py-synologydsm-api](https://pypi.org/project/py-synologydsm-api/) Python package ([github](https://github.com/mib1185/py-synologydsm-api)). Releases before 0.4.0 used the now-archived [synologydsm-api](https://github.com/hacf-fr/synologydsm-api).
 
 **WARNING** This code is to be considered experimental/alpha and essentially **unsupported**. I'm writing and using this at home, not in a production setting. Most importantly, I only have one Synology NAS, so I have no way of testing the many failure conditions. Since there aren't any docs that I can find for the API responses, many of the string-based statuses returned by the API are currently implemented as boolean enums (OK/normal or... not) because I have no way of determining the full list of possible values. **If you would like to take over this project,** please let me know via an issue.
 
@@ -39,12 +39,12 @@ For debugging, append `-vv` to your `docker run` command, to run the entrypoint 
 Clone the repo, then in your clone:
 
 ```
-python3 -mvenv venv
+python3 -mvenv venv  # Python >= 3.11
 source venv/bin/activate
-pip install synologydsm-api==1.0.2 prometheus-client==0.20.0
+pip install py-synologydsm-api==2.12.0 prometheus-client==0.26.0
 ```
 
 
 ### Release Process
 
-Tag the repo. [GitHub Actions](https://github.com/jantman/prometheus-synology-api-exporter/actions) will run a Docker build, push to Docker Hub and GHCR (GitHub Container Registry), and create a release on the repo.
+Add the release to [docs/CHANGELOG.md](docs/CHANGELOG.md), then tag the repo. [GitHub Actions](https://github.com/jantman/prometheus-synology-api-exporter/actions) will run a Docker build, push to Docker Hub and GHCR (GitHub Container Registry), and create a release on the repo.

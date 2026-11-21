@@ -28,18 +28,21 @@ SOFTWARE.
 import sys
 import os
 import argparse
+import asyncio
 import logging
 import socket
 import time
-from typing import Generator, List, Dict, Optional
+from typing import Any, Generator, List, Dict, Optional
 
 from wsgiref.simple_server import make_server, WSGIServer
+import aiohttp
 from prometheus_client.core import (
     REGISTRY, GaugeMetricFamily, InfoMetricFamily, StateSetMetricFamily, Metric
 )
 from prometheus_client.exposition import make_wsgi_app, _SilentHandler
 from prometheus_client.samples import Sample
 from synology_dsm import SynologyDSM
+from synology_dsm.exceptions import SynologyDSMNotLoggedInException
 
 FORMAT = "[%(asctime)s %(levelname)s] %(message)s"
 logging.basicConfig(level=logging.WARNING, format=FORMAT)
@@ -48,7 +51,7 @@ logger = logging.getLogger()
 
 def enum_metric_family(
     name: str, documentation: str, states: List[str], value: str
-):
+) -> StateSetMetricFamily:
     """Since the client library doesn't have this..."""
     if value not in states:
         logger.error(
@@ -124,50 +127,87 @@ class LabeledStateSetMetricFamily(Metric):
 class SynologyApiCollector:
 
     def _env_or_err(self, name: str) -> str:
-        s: str = os.environ.get(name)
+        s: Optional[str] = os.environ.get(name)
         if not s:
             raise RuntimeError(
                 f'ERROR: You must set the "{name}" environment variable.'
             )
         return s
 
-    def __init__(self):
+    def __init__(self) -> None:
         logger.debug('Instantiating SynologyApiCollector')
-        ip: str = self._env_or_err('DSM_IP')
-        port: int = int(os.environ.get('DSM_PORT', '5000'))
-        username: str = self._env_or_err('DSM_USER')
-        passwd: str = self._env_or_err('DSM_PASS')
-        use_https: bool = os.environ.get('DSM_USE_HTTPS') == 'true'
-        verify_ssl: bool = os.environ.get('DSM_VERIFY_SSL') == 'true'
-        timeout: int = int(os.environ.get('DSM_TIMEOUT_SEC', '30'))
-        logger.info(
-            'Connecting to DSM at %s:%s as user %s', ip, port, username
-        )
-        self.dsm: SynologyDSM = SynologyDSM(
-            ip, port, username, passwd,
-            use_https=use_https, verify_ssl=verify_ssl, timeout=timeout
-        )
-        self.dsm.login()
-        logger.debug('Connected to DSM')
+        self._ip: str = self._env_or_err('DSM_IP')
+        self._port: int = int(os.environ.get('DSM_PORT', '5000'))
+        self._username: str = self._env_or_err('DSM_USER')
+        self._passwd: str = self._env_or_err('DSM_PASS')
+        self._use_https: bool = os.environ.get('DSM_USE_HTTPS') == 'true'
+        self._verify_ssl: bool = os.environ.get('DSM_VERIFY_SSL') == 'true'
+        self._timeout: int = int(os.environ.get('DSM_TIMEOUT_SEC', '30'))
         self.query_time: float = 0.0
+        # py-synologydsm-api is asyncio-based, but prometheus_client calls
+        # collect() synchronously from the single-threaded WSGI server. Keep
+        # one event loop for the life of the process and run every DSM call
+        # on it, so the aiohttp session stays bound to that one loop.
+        self._loop: asyncio.AbstractEventLoop = asyncio.new_event_loop()
+        self.dsm: SynologyDSM = self._loop.run_until_complete(self._connect())
+        logger.debug('Connected to DSM')
 
-    def _get_dsm_data(self):
+    async def _connect(self) -> SynologyDSM:
+        """Create the aiohttp session and log in to the DSM."""
+        logger.info(
+            'Connecting to DSM at %s:%s as user %s',
+            self._ip, self._port, self._username
+        )
+        # The aiohttp session must be created while the loop is running.
+        session: aiohttp.ClientSession = aiohttp.ClientSession(
+            connector=aiohttp.TCPConnector(ssl=self._verify_ssl)
+        )
+        dsm: SynologyDSM = SynologyDSM(
+            session, self._ip, self._port, self._username, self._passwd,
+            use_https=self._use_https, timeout=self._timeout
+        )
+        await dsm.login()
+        return dsm
+
+    async def _update_all(self) -> None:
+        """
+        Update every DSM API we read, concurrently. Wait for all of them
+        before raising the first exception, so that no request is left
+        running on the loop between scrapes.
+        """
+        results: List[Any] = await asyncio.gather(
+            self.dsm.information.update(),
+            self.dsm.utilisation.update(),
+            self.dsm.storage.update(),
+            self.dsm.share.update(),
+            self.dsm.network.update(),
+            self.dsm.system.update(),
+            self.dsm.security.update(),
+            return_exceptions=True
+        )
+        for result in results:
+            if isinstance(result, BaseException):
+                raise result
+
+    async def _get_dsm_data(self) -> None:
         """Update all data from the DSM API."""
         logger.debug('Updating DSM data')
-        qstart = time.time()
-        self.dsm.information.update()
-        self.dsm.utilisation.update()
-        self.dsm.storage.update()
-        self.dsm.share.update()
-        self.dsm.network.update()
-        self.dsm.system.update()
-        self.dsm.security.update()
+        qstart: float = time.time()
+        try:
+            await self._update_all()
+        except SynologyDSMNotLoggedInException:
+            # Unlike synologydsm-api 1.x, py-synologydsm-api does not log in
+            # again by itself once the DSM session expires (e.g. after a DSM
+            # reboot); it drops the session and raises this instead.
+            logger.warning('DSM session expired; logging in again')
+            await self.dsm.login()
+            await self._update_all()
         self.query_time = time.time() - qstart
         logger.debug('DSM data updated in %s', self.query_time)
 
     def collect(self) -> Generator[Metric, None, None]:
         logger.debug('Beginning collection')
-        self._get_dsm_data()
+        self._loop.run_until_complete(self._get_dsm_data())
         yield GaugeMetricFamily(
             'synology_query_time_seconds',
             'Time taken to collect data from DSM',
@@ -356,7 +396,7 @@ class SynologyApiCollector:
         yield from [net_rx, net_tx]
 
     def _do_utilization_memory(self) -> Generator[Metric, None, None]:
-        mem: Dict = self.dsm.utilisation.memory
+        mem: Dict[str, Any] = self.dsm.utilisation.memory
         mem.pop('device', None)
         yield GaugeMetricFamily(
             'synology_utilization_memory_swap_in', 'Swap In',
@@ -789,7 +829,9 @@ class SynologyApiCollector:
         )
 
 
-def _get_best_family(address, port):
+def _get_best_family(
+    address: str, port: int
+) -> tuple[socket.AddressFamily, str]:
     """
     Automatically select address family depending on address
     copied from prometheus_client.exposition.start_http_server
@@ -800,10 +842,10 @@ def _get_best_family(address, port):
     # in https://github.com/python/cpython/pull/11767
     infos = socket.getaddrinfo(address, port)
     family, _, _, _, sockaddr = next(iter(infos))
-    return family, sockaddr[0]
+    return family, str(sockaddr[0])
 
 
-def serve_exporter(port: int, addr: str = '0.0.0.0'):
+def serve_exporter(port: int, addr: str = '0.0.0.0') -> None:
     """
     Copied from prometheus_client.exposition.start_http_server, but doesn't run
     in a thread because we're just a proxy.
@@ -820,7 +862,7 @@ def serve_exporter(port: int, addr: str = '0.0.0.0'):
     httpd.serve_forever()
 
 
-def parse_args(argv):
+def parse_args(argv: List[str]) -> argparse.Namespace:
     p = argparse.ArgumentParser(description='Prometheus Synology API exporter')
     p.add_argument(
         '-v', '--verbose', dest='verbose', action='count', default=0,
@@ -835,13 +877,13 @@ def parse_args(argv):
     return args
 
 
-def set_log_info():
+def set_log_info() -> None:
     set_log_level_format(
         logging.INFO, '%(asctime)s %(levelname)s:%(name)s:%(message)s'
     )
 
 
-def set_log_debug():
+def set_log_debug() -> None:
     set_log_level_format(
         logging.DEBUG,
         "%(asctime)s [%(levelname)s %(filename)s:%(lineno)s - "
@@ -849,7 +891,7 @@ def set_log_debug():
     )
 
 
-def set_log_level_format(level: int, format: str):
+def set_log_level_format(level: int, format: str) -> None:
     """
     Set logger level and format.
 
